@@ -121,8 +121,11 @@ p1
 ###Pond sim over a fish density gradient 
 
 timespan = 365*10
-fish_vec = seq(from=0, to=1, by=0.01)
+fish_vec = seq(from=0, to=0.25, by=0.01)
 L3F_results <- numeric(length(fish_vec))  
+N_results <- numeric(length(fish_vec))  
+J_results <- numeric(length(fish_vec))  
+A_results <- numeric(length(fish_vec))  
 
 
 for(i in 1:length(fish_vec)) {
@@ -146,21 +149,40 @@ for(i in 1:length(fish_vec)) {
   
   # Assuming you want the last time point value of L3F
   L3F_results[i] <- round(PondSimPreds$L3F[nrow(PondSimPreds)], 5) 
+  
+  N_results[i] <- round(PondSimPreds$N[nrow(PondSimPreds)], 5) 
+  J_results[i] <- round(PondSimPreds$J[nrow(PondSimPreds)], 5) 
+  A_results[i] <- round(PondSimPreds$A[nrow(PondSimPreds)], 5) 
 }
 
 plot(fish_vec, L3F_results, type = "l", xlab = "Fish Density", ylab = "Final L3F", main = "L3F vs Fish Density")
 
 fish_vec = data.frame(fish_vec)
 L3s = data.frame(L3F_results)
+Nsim = data.frame(N_results)
+Jsim = data.frame(J_results)
+Asim = data.frame(A_results)
 
-data = cbind(fish_vec,L3s)
+data = cbind(fish_vec,L3s,Nsim,Jsim,Asim)
 
-ggplot(data=data, aes(x = fish_vec, y = L3F_results)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("L3 Parasites in Fish (per Fish)") +
+data = data %>% mutate(totalcopes = N_results + J_results + A_results)
+
+L3s = ggplot(data=data, aes(x = fish_vec, y = L3F_results)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("L3 Parasites in Fish (per Fish)") +
   theme(axis.text = element_text(size = 13)) + theme(axis.title = element_text(size = 15))
 
 
+totalcopes = ggplot(data=data, aes(x = fish_vec, y = totalcopes)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("Copepods (per L)") +
+  theme(axis.text = element_text(size = 13)) + theme(axis.title = element_text(size = 15))
+
+ggplot(data=data, aes(x = fish_vec, y = A_results)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("Adults (per L)") +
+  theme(axis.text = element_text(size = 13)) + theme(axis.title = element_text(size = 15))
+
+ggplot(data=data, aes(x = fish_vec, y = J_results)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("Juveniles (per L)") +
+  theme(axis.text = element_text(size = 13)) + theme(axis.title = element_text(size = 15))
+
+ggplot(data=data, aes(x = fish_vec, y = N_results)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("Nauplii (per L)") +
+  theme(axis.text = element_text(size = 13)) + theme(axis.title = element_text(size = 15))
 
 
-
-
+plot_grid(L3s,totalcopes)
 
