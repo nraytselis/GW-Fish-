@@ -121,19 +121,20 @@ p1
 ###Pond sim over a fish density gradient 
 
 timespan = 365*10
-fish_vec = seq(from=0, to=5, by=0.1)
+fish_vec = seq(from=0, to=1, by=0.01)
 L3F_results <- numeric(length(fish_vec))  
+
 
 for(i in 1:length(fish_vec)) {
   Initial_conditions <- c(
-    N = round(7992.454),
-    J = round(8527.531),
-    A = round(1763.213),
+    N = 500,
+    J = 200,
+    A = 25,
     Exposed_values,
     I = 0,
     Preds = fish_vec[i],
     L3F = 0
-  ) /40
+  )
   
   PondSimPreds <- data.frame(ode(
     y = Initial_conditions,
@@ -143,20 +144,18 @@ for(i in 1:length(fish_vec)) {
     func = Pond_ODE
   ))
   
-  # Assuming you want the last time point value of L3F:
+  # Assuming you want the last time point value of L3F
   L3F_results[i] <- round(PondSimPreds$L3F[nrow(PondSimPreds)], 5) 
 }
+
+plot(fish_vec, L3F_results, type = "l", xlab = "Fish Density", ylab = "Final L3F", main = "L3F vs Fish Density")
 
 fish_vec = data.frame(fish_vec)
 L3s = data.frame(L3F_results)
 
 data = cbind(fish_vec,L3s)
 
-
-plot(fish_vec, L3F_results, type = "l", xlab = "Fish Density", ylab = "Final L3F", main = "L3F vs Fish Density")
-
-
-ggplot(data=data, aes(x = fish_vec, y = L3F_results)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("L3 Parasites in Fish") +
+ggplot(data=data, aes(x = fish_vec, y = L3F_results)) + geom_line(linewidth=1) + theme_classic() + xlab("Fish Density (per L)") + ylab("L3 Parasites in Fish (per Fish)") +
   theme(axis.text = element_text(size = 13)) + theme(axis.title = element_text(size = 15))
 
 
