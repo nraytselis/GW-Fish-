@@ -13,7 +13,7 @@ FishODE =function(t, y, parameters) {
   
   with(as.list(parameters),{  
     
-    Preds = ifelse(t<49,0,Preds)
+    Preds = ifelse(t<28,0,Preds) #fish added to tanks on week 4 
     
     Pred_A = f*(Preds/VOL)/(1 + f*h*(A+f_J*h_J*J+f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
     Pred_J = f*f_J*(Preds/VOL)/(1 + f*h*(A + f_J*h_J*J+f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
@@ -64,7 +64,7 @@ get_best_fit = function(chain.list){
 samps = get_best_fit(full)
 pars = samps[[1]]
 Initial_conditions = c(N = 8.704566e+03, J=1.200548e+04 , A=6.386437e+02)
-timespan = 500 
+timespan = 365 
 
 #A) h and a (f) both are same for all stages 
 other_parameters = c(Preds = 0.3, VOL = 1,f=1,f_J=1,f_N=1,h=0.006,h_J=1,h_N=1,i_P=0)
@@ -121,9 +121,14 @@ AdLong$scenario <- gsub("A1", "equalacrossstages", AdLong$scenario)
 AdLong$scenario <- gsub("A4", "bothlargestforadults", AdLong$scenario)
 AdLong$scenario <- gsub("A5", "control", AdLong$scenario)
 
-a = ggplot(data=NaupLong,aes(x=Time,y=value,group=scenario,color=scenario)) + geom_line() + ylim(0,1500)
-b = ggplot(data=JuvLong,aes(x=Time,y=value,group=scenario,color=scenario)) + geom_line() +ylim(0,6000)
-c = ggplot(data=AdLong,aes(x=Time,y=value,group=scenario,color=scenario)) + geom_line() + ylim(0,200)
+palette = c(equalacrossstages = "#CC5500", bothlargestforadults = "gold2",control = "olivedrab")
+
+a = ggplot(data=NaupLong,aes(x=Time,y=value,group=scenario,color=scenario)) + geom_line(linewidth=1.5) + ylim(0,1500) + theme_classic() +
+  labs(x="Time (days)",y=expression('Copepod Density, L' ^ -1)) + scale_color_manual(values = palette, name = "scenario")
+b = ggplot(data=JuvLong,aes(x=Time,y=value,group=scenario,color=scenario)) + geom_line(linewidth=1.5) +ylim(0,6000) + theme_classic() +
+  labs(x="Time (days)",y=expression('Copepod Density, L' ^ -1)) + scale_color_manual(values = palette, name = "scenario")
+c = ggplot(data=AdLong,aes(x=Time,y=value,group=scenario,color=scenario)) + geom_line(linewidth=1.5) + ylim(0,200)+ theme_classic()+
+  labs(x="Time (days)",y=expression('Copepod Density, L' ^ -1)) + scale_color_manual(values = palette, name = "scenario")
 
 library(ggpubr)
 ggarrange(a,b,c,
@@ -132,20 +137,96 @@ ggarrange(a,b,c,
           common.legend = TRUE,
           legend = "right")
 
-Stage <- c("A","J","N","A","J","N")
-Scenario <-c("A","A","A","B","B","B")
-HValues <- c("0.006","0.006","0.006","0.006","0.0006","0.00006")
-handling <- data.frame(Stage=Stage,Scenario=Scenario,HValue=HValues) 
-handlingtime= ggplot(data=handling,aes(x=Stage,y=HValue,group=Scenario,color=Scenario)) + geom_point(size=3) + theme_classic() + labs(y="Handling Time")
+#predator gradient
+preds_gradient <- seq(0, 0.3, by = 0.01)
 
-Stage <- c("A","J","N","A","J","N")
-Scenario <-c("A","A","A","B","B","B")
-AValues <- c("40","40","40","40","4","0.4")
-attach <- data.frame(Stage=Stage,Scenario=Scenario,AValues=AValues) 
-attackrates = ggplot(data=handling,aes(x=Stage,y=AValues,group=Scenario,color=Scenario)) + geom_point(size=3) + theme_classic() + labs(y="Attack Rate")
+#scenarios
+scenario_params <- list(
+  equalacrossstages = c(VOL = 1, f = 1, f_J = 1, f_N = 1,
+        h = 0.006, h_J = 1, h_N = 1, i_P = 0),
+  
+  bothlargestforadults = c(VOL = 1, f = 1, f_J = 0.1, f_N = 0.01,
+        h = 0.006, h_J = 0.1, h_N = 0.01, i_P = 0),
+  
+  control = c(VOL = 1, f = 1, f_J = 0.1, f_N = 0.01,
+              h = 0.001, h_J = 0.1, h_N = 0.01, i_P = 0)
+)
 
-ggarrange(handlingtime,attackrates,
-          nrow = 1, ncol = 2,
-          labels = c("handlingtime","attackrates"),
+
+sim_results <- list()
+
+for (s in names(scenario_params)) {
+  for (p in preds_gradient) {
+    
+    # update parameters
+    parameters <- c(pars,
+                    Preds = p,
+                    scenario_params[[s]])
+    
+    # run simulation
+    sim <- ode(
+      y = Initial_conditions,
+      times = 1:timespan,
+      parms = parameters,
+      method = "lsoda",
+      func = FishODE
+    )
+    
+    # store results
+    sim_df <- as.data.frame(sim) %>%
+      mutate(Preds = p,
+             Scenario = s)
+    
+    sim_results[[paste(s, p, sep = "_")]] <- sim_df
+  }
+}
+
+# bind into one dataframe
+all_sims <- bind_rows(sim_results, .id = "run_id")
+
+library(dplyr)
+
+#take the last time point from each simulation
+endpoints <- all_sims %>%
+  group_by(Scenario, Preds) %>%
+  slice_tail(n = 1) %>%   # last time step
+  ungroup()
+
+PredsN = ggplot(endpoints, aes(x = Preds, y = N, color = Scenario)) +
+  geom_line(size = 1.5) +
+  theme_classic() +
+  labs(x=expression('Fish Density, L' ^ -1), y=expression('Copepod Density, L' ^ -1)) + scale_color_manual(values = palette, name = "scenario")
+
+PredsJ = ggplot(endpoints, aes(x = Preds, y = J, color = Scenario)) +
+  geom_line(size = 1.5) +
+  theme_classic() +
+  labs(x=expression('Fish Density, L' ^ -1), y=expression('Copepod Density, L' ^ -1)) + scale_color_manual(values = palette, name = "scenario")
+
+PredsA = ggplot(endpoints, aes(x = Preds, y = A, color = Scenario)) +
+  geom_line(size = 1.5) +
+  theme_classic() +
+  labs(x=expression('Fish Density, L' ^ -1), y=expression('Copepod Density, L' ^ -1)) + scale_color_manual(values = palette, name = "scenario")
+
+ggarrange(a,b,c,PredsN,PredsJ,PredsA,
+          nrow = 2, ncol = 3,
+          labels = c("N","J","A","N","J","A"),
           common.legend = TRUE,
           legend = "right")
+
+# Stage <- c("A","J","N","A","J","N")
+# Scenario <-c("A","A","A","B","B","B")
+# HValues <- c("0.006","0.006","0.006","0.006","0.0006","0.00006")
+# handling <- data.frame(Stage=Stage,Scenario=Scenario,HValue=HValues) 
+# handlingtime= ggplot(data=handling,aes(x=Stage,y=HValue,group=Scenario,color=Scenario)) + geom_point(size=3) + theme_classic() + labs(y="Handling Time")
+# 
+# Stage <- c("A","J","N","A","J","N")
+# Scenario <-c("A","A","A","B","B","B")
+# AValues <- c("40","40","40","40","4","0.4")
+# attach <- data.frame(Stage=Stage,Scenario=Scenario,AValues=AValues) 
+# attackrates = ggplot(data=handling,aes(x=Stage,y=AValues,group=Scenario,color=Scenario)) + geom_point(size=3) + theme_classic() + labs(y="Attack Rate")
+# 
+# ggarrange(handlingtime,attackrates,
+#           nrow = 1, ncol = 2,
+#           labels = c("handlingtime","attackrates"),
+#           common.legend = TRUE,
+#           legend = "right")
