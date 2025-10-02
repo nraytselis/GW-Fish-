@@ -18,6 +18,7 @@ library(viridis)
 library(RColorBrewer)
 library(pomp)
 library(stringr)
+library(ggpubr)
 
 
 setwd("~/Desktop/Rscripts/Data")
