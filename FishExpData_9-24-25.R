@@ -24,6 +24,10 @@ library(ggpubr)
 setwd("~/Desktop/Rscripts/Data")
 
 CopepodCounts <- read_csv("CopepodCounts_Experiment1_NR.csv",locale=locale(encoding="latin1"))
+
+#remove rows with missing values for tank 18
+CopepodCounts <- CopepodCounts[CopepodCounts$Initials %in% c("NR", "MR","JM","TH","AS"), ]
+
 CopepodCounts[which(CopepodCounts[,"Fish_Treatment"] == 11),"Fish_Treatment"] = 12
 
 #Does fish treatment have an effect on copepod densities and size structure?
@@ -191,23 +195,23 @@ combined_palette <- c("#77AADD","#EE8866","#EEDD88","#44BB99","#BBCC33","#DDDDDD
 
 total = ggplot(data=CopepodCountsSummary, aes(x=Week, y= mean, colour=FishPerL), inherit.aes=F, show.legend = FALSE) + geom_line(linewidth=1.5) + geom_point(size = 3) + 
   geom_errorbar(data=CopepodCountsSummary, aes(x=Week, ymin=mean-SE, ymax=mean+SE, colour=FishPerL), width=0.2, inherit.aes=FALSE, show.legend = TRUE) +
-  theme_classic() + scale_color_manual(values = combined_palette) + labs(y = expression('Total Copepod Density, L' ^ -1)) +
+  theme_classic() + labs(y = expression('Total Copepod Density, L' ^ -1)) +
   guides(color = guide_legend(title = expression('Fish Density, L' ^ -1),  ))
 
 N = ggplot(data=CopepodCountsSummaryNaup, aes(x=Week, y= mean, colour=FishPerL), inherit.aes=F, show.legend = FALSE) +
   labs(y = expression('N Density, L' ^ -1)) + geom_line(linewidth=1.5) + geom_point(size = 3) + 
   geom_errorbar(data=CopepodCountsSummaryNaup, aes(x=Week, ymin=mean-SE, ymax=mean+SE, colour=FishPerL), width=0.2, inherit.aes=FALSE, show.legend = TRUE) +
-  theme_classic() + scale_color_manual(values = combined_palette) + guides(color = guide_legend(title = expression('Fish Density, L' ^ -1),  ))
+  theme_classic() + guides(color = guide_legend(title = expression('Fish Density, L' ^ -1),  ))
 
 J = ggplot(data=CopepodCountsSummaryJOA, aes(x=Week, y= mean, colour=FishPerL), inherit.aes=F, show.legend = FALSE) +
   labs(y = expression('JOA Density, L' ^ -1)) + geom_line(linewidth=1.5) + geom_point(size = 3) + 
   geom_errorbar(data=CopepodCountsSummaryJOA, aes(x=Week, ymin=mean-SE, ymax=mean+SE, colour=FishPerL), width=0.2, inherit.aes=FALSE, show.legend = TRUE) +
-  theme_classic() + scale_color_manual(values = combined_palette) + guides(color = guide_legend(title = expression('Fish Density, L' ^ -1),  ))
+  theme_classic() + guides(color = guide_legend(title = expression('Fish Density, L' ^ -1),  ))
 
 A = ggplot(data=CopepodCountsSummaryAF, aes(x=Week, y= mean, colour=FishPerL), inherit.aes=F, show.legend = FALSE) +
   labs(y = expression('AF Copepod Density, L' ^ -1)) + geom_line(linewidth=1.5) + geom_point(size = 3) + 
   geom_errorbar(data=CopepodCountsSummaryAF, aes(x=Week, ymin=mean-SE, ymax=mean+SE, colour=FishPerL), width=0.2, inherit.aes=FALSE, show.legend = TRUE) +
-  theme_classic() + scale_color_manual(values = combined_palette) + guides(color = guide_legend(title = expression('Fish Density, L' ^ -1),  ))
+  theme_classic() + guides(color = guide_legend(title = expression('Fish Density, L' ^ -1),  ))
 
 ggarrange(total,N,J,A,
           nrow = 2, ncol = 2,
