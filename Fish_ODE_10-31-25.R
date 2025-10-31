@@ -1,0 +1,146 @@
+# Loading packages
+library(Matrix)
+library(deSolve)
+library(ggplot2)
+library(cowplot)
+library(tidyverse)
+library(deSolve)
+
+
+Pond_ODE =function(t, y, parameters) {
+  
+  with(as.list(parameters),{
+    N=y[1]; J=y[2]; A=y[3]; Es = y[4:(4+latent_stages - 1)]; I = y[4+latent_stages]; Preds = y[5+latent_stages]; L3F = y[6+latent_stages]
+    VOL = 1
+    
+    immigration = ifelse(t %% 365 > 100 & t %% 365 < 100 + ImmigrationPeriod,ImmigrationRate,0) 
+    fishing = ifelse(t %% 365 <= 100 | t %% 365 >= 100 + ImmigrationPeriod, FishingRate, 0)
+    
+    Pred_A = f*Preds/(1 + f*h*(A + sum(Es) + I + f_J*h_J*J + f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
+    Pred_J = f*f_J*Preds/(1 + f*h*(A + sum(Es) + I  + f_J*h_J*J + f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
+    Pred_N = f*f_N*Preds/(1 + f*h*(A + sum(Es) + I + f_J*h_J*J + f_N*h_N*N)/VOL  + i_P*max(Preds-1, 0)/VOL)
+    
+    d_A_c = d_A*exp(comp_d / VOL * (c_N * N + c_J * J + A + sum(Es))) #density dependence in deaths
+    
+    d_J_c = d_J*exp(comp_d / VOL * (c_N * N + c_J * J + A + sum(Es))) #density dependence in deaths
+    
+    d_N_c = d_N*exp(comp_d / VOL * (c_N * N + c_J * J + A + sum(Es))) #density dependence in deaths
+    
+    m_N_c = m_N*exp(-comp_m/VOL*(c_N*N + c_J*J + A + sum(Es))) #density dependence in maturation
+    
+    m_J_c = m_J*exp(-comp_m/VOL*(c_N*N + c_J*J + A + sum(Es))) #density dependence in maturation
+    
+    dNdt = b_M*(A + sum(Es))/2*exp(-comp_b/VOL*(c_N*N + c_J*J + A + sum(Es))) - (m_N_c+d_N_c)*N - cann*(A + I + sum(Es))*N - Pred_N*N
+    
+    dJdt = m_N_c*N - (m_J_c+d_J_c)*J -Pred_J*J
+    
+    dAdt = m_J_c*J - d_A_c*A - lambda*A - Pred_A*A
+    
+    # development of all stages
+    latent_progression = latent_rate*Es
+    # lost to next stage   #death      #gained from last stage
+    dEsdt = -latent_progression - d_A_c*Es + c(lambda*A, latent_progression[1:(latent_stages - 1)]) - Pred_A*Es
+    
+    dIdt = as.numeric(latent_progression[latent_stages]) - d_A_c*I - Pred_A*I
+    
+    dPredsdt = Preds*(convEff*(Pred_N*N + Pred_J*J + Pred_A*A + Pred_A*sum(Es))) - d_F*Preds + immigration - fishing*Preds   #conv eff should be based on size class
+    
+    dL3Fdt <- Pred_A*I - d_W*L3F #- d_F*L3F/Preds 
+    
+    result = c(dNdt,dJdt,dAdt, dEsdt, dIdt,dPredsdt, dL3Fdt)
+    
+    
+    return(list(result))
+  }
+  )
+}
+
+
+#bring in mcmc chains
+setwd("~/Desktop/Rscripts/Data/Fish")
+get_best_fit = function(chain.list){
+  L = length(chain.list)
+  chain.scores = numeric()
+  for(i in 1:L){
+    chain.scores[i] = max(chain.list[[i]]$log.p)
+  }
+  list(chain.list[[which.max(chain.scores)]]$samples[which.max(chain.list[[which.max(chain.scores)]]$log.p),],
+       chain.list[[which.max(chain.scores)]]$cov.jump)
+  
+}
+
+setwd("~/Desktop/Rscripts/Data/Fish")
+chainsA <- readRDS("Joint_GW_full_A2.RDA")
+chainsB <- readRDS("Joint_GW_full_B2.RDA")
+chainsC <- readRDS("Joint_GW_full_C2.RDA")
+
+fishchains = c(chainsA,chainsB,chainsC)
+
+parameters = get_best_fit(fishchains)[[1]]
+variances = get_best_fit(fishchains)[[2]] 
+
+parameters["latent_stages"] = 60
+parameters["latent_rate"] = 4.3
+parameters["lambda"] = 1.3
+parameters["d_W"] = 0.01 #on average GW in fish live 100 days 
+parameters["d_F"] = 0
+parameters["convEff"] = 0 #how many fish can you build by eating one adult, temper for nauplii and juveniles (mass of n/mass over a)
+parameters["ImmigrationRate"] = 0.375/50 #fish per liter per day 
+parameters["FishingRate"] = 0.143 #fish fished per liter per day (fishing effort) - the average fish is caught after 1 week
+parameters["ImmigrationPeriod"] = 50
+parameters = unlist(parameters)
+
+
+Exposed_names = paste0("E", 1:parameters["latent_stages"])
+Exposed_values = rep(0, times=parameters["latent_stages"])
+names(Exposed_values) = Exposed_names
+Exposed_values
+
+Initial_conditions = c(N = 7500, J = 6000, A = 700, Exposed_values, I = 0, Preds = 0,L3F = 0)/15
+timespan = 365*2
+
+
+# # #fish added during rainy season
+# intro_fish = expand.grid(day = 121:269, year = 1:5) 
+# intro_fish$time <- intro_fish$day + 365 * (intro_fish$year - 1)
+# n <- nrow(intro_fish)
+# event_data_fish = data.frame(var = "Preds", time = intro_fish$time, value = 0.375/140 , method = "add")
+
+# #fishing during dry season (fish and L3Fs)
+# remove_fishing <- expand.grid(day = c(1:120, 270:365), year = 1:5) 
+# remove_fishing$time <- remove_fishing$day + 365 * (remove_fishing$year - 1)
+# nfishing <- nrow(remove_fishing)
+# var_choices <- sample(c("Preds", "L3F"), size = nfishing, replace = TRUE, prob = c(0.9, 0.1)) 
+# event_data_fishing = data.frame(var = var_choices, time = remove_fishing$time, value = -0.1, method = "add")
+# #combined list of events
+# all_events = rbind(event_data_fish, event_data_fishing)
+
+
+#run simulation
+PondSim = data.frame(ode(y = Initial_conditions, times=1:timespan, parms=parameters, hmax=1,
+                         method="lsoda", func=Pond_ODE)) 
+
+
+
+#reformat sim data frame
+PondSim[,"Es"] = rowSums(PondSim) - PondSim[,"N"] - PondSim[,"J"]- PondSim[,"A"] - PondSim[,"I"] - PondSim[,"time"]
+PondSim[,"Exposed"] = apply(X=PondSim[,which(str_detect(colnames(PondSim),"E"))],MARGIN=1,FUN = sum) 
+
+#check to make sure that events worked, NEED TO CHANGE EVENT SO THAT CANNOT GO NEGATIVE 
+ggplot(PondSim, aes(x = time)) +
+  geom_line(aes(y = Preds), color = "blue") +
+  geom_line(aes(y = L3F), color = "red") +
+  geom_line(aes(y=I),color="green") +
+  labs(y = "Fish (blue = total fish, red = L3F, green=I)", title = "Predator Fish Dynamics Over Time") +
+  theme_minimal()
+
+#reformat for plotting
+PondSim = PondSim %>% select(time,N,J,A,Exposed,I,Preds, L3F)
+PondSim = PondSim %>% pivot_longer(cols = c(N,J,A,Exposed,I,Preds, L3F)) 
+
+#plot sim 
+p1 = ggplot(PondSim, aes(x=time, y = value + 0.01 , group = name, color = name)) + 
+  geom_line() + ylab("density per L") + theme_minimal() + scale_y_log10()
+p1
+
+#need to make sure L3Fs cannot go negative, as they currently can
